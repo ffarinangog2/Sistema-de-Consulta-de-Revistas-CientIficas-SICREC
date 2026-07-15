@@ -25,12 +25,7 @@ public class UsuarioController {
     }
 
     @PostMapping
-    public Usuario crearUsuario(@RequestBody Usuario usuario) {
-        return usuarioService.guardarUsuario(usuario);
-    }
-
-    @PostMapping("/registro")
-    public Usuario registrarUsuario(
+    public Usuario crearUsuario(
             @RequestBody RegistroUsuarioDTO dto
     ) {
 
@@ -50,11 +45,14 @@ public class UsuarioController {
             @RequestBody Usuario usuario) {
 
         return usuarioService.actualizarUsuario(id, usuario);
+
     }
 
     @DeleteMapping("/{id}")
-    public void eliminarUsuario(Long id) {
+    public void eliminarUsuario(@PathVariable Long id) {
+
         usuarioService.eliminarUsuario(id);
+
     }
 
 }

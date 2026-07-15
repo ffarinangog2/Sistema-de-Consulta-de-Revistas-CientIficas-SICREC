@@ -2,14 +2,18 @@ package uteq.edu.ec.sicrec.service;
 
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import uteq.edu.ec.sicrec.dto.CambiarPasswordDTO;
 import uteq.edu.ec.sicrec.dto.LoginRequestDTO;
 import uteq.edu.ec.sicrec.dto.LoginResponseDTO;
 import uteq.edu.ec.sicrec.dto.UsuarioResponseDTO;
 import uteq.edu.ec.sicrec.entity.Usuario;
+import uteq.edu.ec.sicrec.entity.TokenRecuperacion;
+import uteq.edu.ec.sicrec.repository.TokenRecuperacionRepository;
 import uteq.edu.ec.sicrec.repository.UsuarioRepository;
 import uteq.edu.ec.sicrec.security.JwtService;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -29,13 +33,16 @@ public class UsuarioService {
     private final RolRepository rolRepository;
     private final CargoRepository cargoRepository;
     private final EmailService emailService;
+    private final TokenRecuperacionRepository tokenRecuperacionRepository;
+
     public UsuarioService(
             UsuarioRepository usuarioRepository,
             BCryptPasswordEncoder passwordEncoder,
             JwtService jwtService,
             RolRepository rolRepository,
             CargoRepository cargoRepository,
-            EmailService emailService)
+            EmailService emailService,
+            TokenRecuperacionRepository tokenRecuperacionRepository)
     {
 
         this.usuarioRepository = usuarioRepository;
@@ -44,6 +51,7 @@ public class UsuarioService {
         this.rolRepository = rolRepository;
         this.cargoRepository = cargoRepository;
         this.emailService =emailService;
+        this.tokenRecuperacionRepository = tokenRecuperacionRepository;
     }
 
     public List<Usuario> listarUsuarios() {
@@ -175,6 +183,100 @@ public class UsuarioService {
 
     public boolean existeCorreo(String correo) {
         return usuarioRepository.existsByCorreoInstitucional(correo);
+    }
+
+    @Transactional
+    public void solicitarRecuperacionPassword(String correo) {
+
+        Optional<Usuario> usuarioOptional = usuarioRepository
+                .findByCorreoInstitucional(correo);
+
+        if (usuarioOptional.isEmpty()) {
+            return;
+        }
+
+        Usuario usuario = usuarioOptional.get();
+
+        // INICIO - Eliminación de tokens anteriores
+        tokenRecuperacionRepository.deleteByUsuario(usuario);
+        // FIN - Eliminación de tokens anteriores
+
+        String token = UUID.randomUUID().toString();
+
+        TokenRecuperacion tokenRecuperacion = new TokenRecuperacion();
+
+        tokenRecuperacion.setToken(token);
+        tokenRecuperacion.setFechaExpiracion(
+                LocalDateTime.now().plusMinutes(30)
+        );
+        tokenRecuperacion.setUsuario(usuario);
+
+        tokenRecuperacionRepository.save(tokenRecuperacion);
+
+        String enlace =
+                "http://localhost:5173/restablecer-password?token="
+                        + token;
+
+        emailService.enviarRecuperacionPassword(
+                usuario.getCorreoInstitucional(),
+                usuario.getNombreCompleto(),
+                enlace
+        );
+    }
+
+    public TokenRecuperacion validarTokenRecuperacion(String token) {
+
+        return tokenRecuperacionRepository
+                .findByTokenAndFechaExpiracionAfter(
+                        token,
+                        LocalDateTime.now()
+                )
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "El token de recuperación no existe o ha expirado"
+                        ));
+    }
+
+    // Restablece la contraseña y consume el token para impedir su reutilización.
+    @Transactional
+    public void restablecerPassword(
+            String token,
+            String nuevaPassword,
+            String confirmarPassword
+    ) {
+
+        TokenRecuperacion tokenRecuperacion = tokenRecuperacionRepository
+                .findByToken(token)
+                .orElseThrow(() ->
+                        new RuntimeException(
+                                "El token de recuperación no existe"
+                        ));
+
+        if (!tokenRecuperacion.getFechaExpiracion()
+                .isAfter(LocalDateTime.now())) {
+
+            throw new RuntimeException(
+                    "El token de recuperación ha expirado"
+            );
+        }
+
+        if (!nuevaPassword.equals(confirmarPassword)) {
+
+            throw new RuntimeException(
+                    "Las contraseñas no coinciden"
+            );
+        }
+
+        Usuario usuario = tokenRecuperacion.getUsuario();
+
+        usuario.setPassword(
+                passwordEncoder.encode(nuevaPassword)
+        );
+        usuario.setDebeCambiarPassword(false);
+
+        usuarioRepository.save(usuario);
+
+        tokenRecuperacionRepository.deleteByToken(token);
     }
 
     public void eliminarUsuario(Long id) {

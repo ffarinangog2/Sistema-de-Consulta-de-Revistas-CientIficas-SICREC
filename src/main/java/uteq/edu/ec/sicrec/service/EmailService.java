@@ -39,4 +39,32 @@ public class EmailService {
 
     }
 
+    public void enviarRecuperacionPassword(
+            String destino,
+            String nombre,
+            String enlace
+    ) {
+
+        SimpleMailMessage mensaje = new SimpleMailMessage();
+
+        mensaje.setTo(destino);
+
+        mensaje.setSubject(
+                "Recuperación de contraseña - SICREC"
+        );
+
+        mensaje.setText(
+                "Hola " + nombre + ",\n\n" +
+                        "Se ha solicitado restablecer la contraseña de su cuenta.\n\n" +
+                        "Para establecer una nueva contraseña, ingrese al siguiente enlace:\n\n" +
+                        enlace + "\n\n" +
+                        "Este enlace expirará en 30 minutos.\n\n" +
+                        "Si usted no realizó esta solicitud, ignore este correo.\n\n" +
+                        "Sistema SICREC"
+        );
+
+        mailSender.send(mensaje);
+
+    }
+
 }
