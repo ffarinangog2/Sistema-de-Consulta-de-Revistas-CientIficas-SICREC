@@ -12,9 +12,15 @@ import java.util.List;
 public class HistorialBusquedaService {
 
     private final HistorialBusquedaRepository historialRepository;
+    private final AuditoriaService auditoriaService;
 
-    public HistorialBusquedaService(HistorialBusquedaRepository historialRepository) {
+    public HistorialBusquedaService(
+            HistorialBusquedaRepository historialRepository,
+            AuditoriaService auditoriaService
+    ) {
+
         this.historialRepository = historialRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public void guardarBusqueda(
@@ -23,15 +29,37 @@ public class HistorialBusquedaService {
             Integer cantidadResultados
     ) {
 
-        HistorialBusqueda historial = new HistorialBusqueda();
+        // INICIO - Auditoría módulo Búsquedas
+        try {
+            HistorialBusqueda historial = new HistorialBusqueda();
 
-        historial.setUsuario(usuario);
-        historial.setTerminoBusqueda(termino);
-        historial.setFechaBusqueda(LocalDateTime.now());
-        historial.setCantidadResultados(cantidadResultados);
+            historial.setUsuario(usuario);
+            historial.setTerminoBusqueda(termino);
+            historial.setFechaBusqueda(LocalDateTime.now());
+            historial.setCantidadResultados(cantidadResultados);
 
-        historialRepository.save(historial);
+            historialRepository.save(historial);
 
+            auditoriaService.registrarExito(
+                    usuario,
+                    "BÚSQUEDAS",
+                    "BÚSQUEDA_REALIZADA",
+                    "Término buscado: "
+                            + termino
+                            + ". Resultados encontrados: "
+                            + cantidadResultados
+            );
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    usuario,
+                    "BÚSQUEDAS",
+                    "BÚSQUEDA_REALIZADA",
+                    "No fue posible registrar la búsqueda del término: "
+                            + termino
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Búsquedas
     }
 
     public List<HistorialBusqueda> listarPorUsuario(Usuario usuario) {
@@ -40,6 +68,23 @@ public class HistorialBusquedaService {
                 .findByUsuarioOrderByFechaBusquedaDesc(usuario);
 
     }
+
+    // INICIO - Auditoría módulo Búsquedas
+    public void registrarBusquedaFallida(
+            Usuario usuario,
+            String termino
+    ) {
+
+        auditoriaService.registrarError(
+                usuario,
+                "BÚSQUEDAS",
+                "BÚSQUEDA_REALIZADA",
+                "La búsqueda del término no pudo completarse: "
+                        + termino
+        );
+    }
+    // FIN - Auditoría módulo Búsquedas
+
     public void eliminar(Long id) {
 
         historialRepository.deleteById(id);

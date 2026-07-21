@@ -11,9 +11,15 @@ import java.util.Optional;
 public class RolService {
 
     private final RolRepository rolRepository;
+    private final AuditoriaService auditoriaService;
 
-    public RolService(RolRepository rolRepository) {
+    public RolService(
+            RolRepository rolRepository,
+            AuditoriaService auditoriaService
+    ) {
+
         this.rolRepository = rolRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<Rol> listarRoles() {
@@ -25,21 +31,89 @@ public class RolService {
     }
 
     public Rol guardarRol(Rol rol) {
-        return rolRepository.save(rol);
+
+        // INICIO - Auditoría módulo Roles
+        try {
+            Rol rolGuardado = rolRepository.save(rol);
+
+            auditoriaService.registrarExito(
+                    null,
+                    "ROLES",
+                    "ROL_CREADO",
+                    "Rol creado: " + rolGuardado.getNombreRol()
+            );
+
+            return rolGuardado;
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    null,
+                    "ROLES",
+                    "ROL_CREADO",
+                    "No fue posible crear el rol"
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Roles
     }
 
     public Rol actualizarRol(Long id, Rol rolActualizado) {
 
-        Rol rol = rolRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Rol no encontrado"));
+        // INICIO - Auditoría módulo Roles
+        try {
+            Rol rol = rolRepository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException("Rol no encontrado"));
 
-        rol.setNombreRol(rolActualizado.getNombreRol());
+            rol.setNombreRol(rolActualizado.getNombreRol());
 
-        return rolRepository.save(rol);
+            Rol rolGuardado = rolRepository.save(rol);
+
+            auditoriaService.registrarExito(
+                    null,
+                    "ROLES",
+                    "ROL_EDITADO",
+                    "Rol editado: " + rolGuardado.getNombreRol()
+            );
+
+            return rolGuardado;
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    null,
+                    "ROLES",
+                    "ROL_EDITADO",
+                    "No fue posible editar el rol con id " + id
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Roles
     }
 
     public void eliminarRol(Long id) {
-        rolRepository.deleteById(id);
+
+        // INICIO - Auditoría módulo Roles
+        try {
+            Rol rol = rolRepository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException("Rol no encontrado"));
+
+            rolRepository.delete(rol);
+
+            auditoriaService.registrarExito(
+                    null,
+                    "ROLES",
+                    "ROL_ELIMINADO",
+                    "Rol eliminado: " + rol.getNombreRol()
+            );
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    null,
+                    "ROLES",
+                    "ROL_ELIMINADO",
+                    "No fue posible eliminar el rol con id " + id
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Roles
     }
 
 }

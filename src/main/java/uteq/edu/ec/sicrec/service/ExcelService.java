@@ -4,6 +4,7 @@ import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import uteq.edu.ec.sicrec.dto.ReporteHistorialDTO;
+import uteq.edu.ec.sicrec.dto.AuditoriaResponseDTO;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -182,5 +183,86 @@ public class ExcelService {
         return output.toByteArray();
 
     }
+
+    // INICIO - Endpoints de auditoría
+    public byte[] generarAuditoriaExcel(
+            List<AuditoriaResponseDTO> datos
+    ) throws IOException {
+
+        Workbook workbook = new XSSFWorkbook();
+        Sheet sheet = workbook.createSheet("Auditoría");
+
+        Font encabezadoFont = workbook.createFont();
+        encabezadoFont.setBold(true);
+        encabezadoFont.setColor(IndexedColors.WHITE.getIndex());
+
+        CellStyle encabezadoStyle = workbook.createCellStyle();
+        encabezadoStyle.setFillForegroundColor(
+                IndexedColors.DARK_BLUE.getIndex()
+        );
+        encabezadoStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        encabezadoStyle.setFont(encabezadoFont);
+
+        Row encabezado = sheet.createRow(0);
+        String[] columnas = {
+                "Fecha y hora",
+                "Usuario",
+                "Módulo",
+                "Acción",
+                "Descripción",
+                "Dirección IP",
+                "Resultado"
+        };
+
+        for (int i = 0; i < columnas.length; i++) {
+            Cell cell = encabezado.createCell(i);
+            cell.setCellValue(columnas[i]);
+            cell.setCellStyle(encabezadoStyle);
+        }
+
+        int fila = 1;
+
+        for (AuditoriaResponseDTO dto : datos) {
+            Row row = sheet.createRow(fila++);
+
+            row.createCell(0).setCellValue(
+                    dto.getFechaAccion() != null
+                            ? dto.getFechaAccion().toString()
+                            : ""
+            );
+            row.createCell(1).setCellValue(dto.getNombreUsuario());
+            row.createCell(2).setCellValue(valorSeguro(dto.getModulo()));
+            row.createCell(3).setCellValue(valorSeguro(dto.getAccion()));
+            row.createCell(4).setCellValue(valorSeguro(dto.getDescripcion()));
+            row.createCell(5).setCellValue(valorSeguro(dto.getIpOrigen()));
+            row.createCell(6).setCellValue(valorSeguro(dto.getResultado()));
+        }
+
+        if (fila > 1) {
+            sheet.setAutoFilter(
+                    new org.apache.poi.ss.util.CellRangeAddress(
+                            0,
+                            fila - 1,
+                            0,
+                            columnas.length - 1
+                    )
+            );
+        }
+
+        for (int i = 0; i < columnas.length; i++) {
+            sheet.autoSizeColumn(i);
+        }
+
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        workbook.write(output);
+        workbook.close();
+
+        return output.toByteArray();
+    }
+
+    private String valorSeguro(String valor) {
+        return valor != null ? valor : "";
+    }
+    // FIN - Endpoints de auditoría
 
 }

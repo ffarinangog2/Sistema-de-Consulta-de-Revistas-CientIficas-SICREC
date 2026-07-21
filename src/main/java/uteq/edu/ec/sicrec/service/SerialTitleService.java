@@ -145,6 +145,7 @@ public class SerialTitleService {
                         .orElseThrow();
 
                 dto.setPercentile(String.valueOf(mejorPercentil));
+                dto.setBestPercentile(String.valueOf(mejorPercentil));
 
                 String cuartil;
 
@@ -158,6 +159,7 @@ public class SerialTitleService {
                     cuartil = "Q4";
 
                 dto.setQuartile(cuartil);
+                dto.setBestQuartile(cuartil);
 
                 System.out.println(
                         "DEBUG [" + issn + "] mejor percentil del año vigente: " + mejorPercentil
@@ -176,7 +178,8 @@ public class SerialTitleService {
 
         } catch (Exception e) {
 
-            throw new RuntimeException(e);
+            // Una revista sin métricas disponibles no debe interrumpir toda la búsqueda.
+            return null;
 
         }
 

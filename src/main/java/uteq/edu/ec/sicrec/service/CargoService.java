@@ -11,9 +11,15 @@ import java.util.Optional;
 public class CargoService {
 
     private final CargoRepository cargoRepository;
+    private final AuditoriaService auditoriaService;
 
-    public CargoService(CargoRepository cargoRepository) {
+    public CargoService(
+            CargoRepository cargoRepository,
+            AuditoriaService auditoriaService
+    ) {
+
         this.cargoRepository = cargoRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<Cargo> listarCargos() {
@@ -25,21 +31,89 @@ public class CargoService {
     }
 
     public Cargo guardarCargo(Cargo cargo) {
-        return cargoRepository.save(cargo);
+
+        // INICIO - Auditoría módulo Cargos
+        try {
+            Cargo cargoGuardado = cargoRepository.save(cargo);
+
+            auditoriaService.registrarExito(
+                    null,
+                    "CARGOS",
+                    "CARGO_CREADO",
+                    "Cargo creado: " + cargoGuardado.getNombreCargo()
+            );
+
+            return cargoGuardado;
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    null,
+                    "CARGOS",
+                    "CARGO_CREADO",
+                    "No fue posible crear el cargo"
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Cargos
     }
 
     public Cargo actualizarCargo(Long id, Cargo cargoActualizado) {
 
-        Cargo cargo = cargoRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Cargo no encontrado"));
+        // INICIO - Auditoría módulo Cargos
+        try {
+            Cargo cargo = cargoRepository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException("Cargo no encontrado"));
 
-        cargo.setNombreCargo(cargoActualizado.getNombreCargo());
+            cargo.setNombreCargo(cargoActualizado.getNombreCargo());
 
-        return cargoRepository.save(cargo);
+            Cargo cargoGuardado = cargoRepository.save(cargo);
+
+            auditoriaService.registrarExito(
+                    null,
+                    "CARGOS",
+                    "CARGO_EDITADO",
+                    "Cargo editado: " + cargoGuardado.getNombreCargo()
+            );
+
+            return cargoGuardado;
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    null,
+                    "CARGOS",
+                    "CARGO_EDITADO",
+                    "No fue posible editar el cargo con id " + id
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Cargos
     }
 
     public void eliminarCargo(Long id) {
-        cargoRepository.deleteById(id);
+
+        // INICIO - Auditoría módulo Cargos
+        try {
+            Cargo cargo = cargoRepository.findById(id)
+                    .orElseThrow(() ->
+                            new RuntimeException("Cargo no encontrado"));
+
+            cargoRepository.delete(cargo);
+
+            auditoriaService.registrarExito(
+                    null,
+                    "CARGOS",
+                    "CARGO_ELIMINADO",
+                    "Cargo eliminado: " + cargo.getNombreCargo()
+            );
+        } catch (RuntimeException e) {
+            auditoriaService.registrarError(
+                    null,
+                    "CARGOS",
+                    "CARGO_ELIMINADO",
+                    "No fue posible eliminar el cargo con id " + id
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Cargos
     }
 
 }

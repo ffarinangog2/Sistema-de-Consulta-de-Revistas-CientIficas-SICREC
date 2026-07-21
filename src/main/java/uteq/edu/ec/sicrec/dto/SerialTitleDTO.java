@@ -21,6 +21,10 @@ public class SerialTitleDTO {
     private String percentile;
     private String quartile;
 
+    // Alias explícitos del mejor percentil/cuartil, sin eliminar los campos actuales.
+    private String bestPercentile;
+    private String bestQuartile;
+
     // Revista
     private String publisher;
     private String area;

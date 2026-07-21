@@ -34,6 +34,17 @@ public class Usuario {
     @Column(name = "fecha_registro")
     private LocalDateTime fechaRegistro;
 
+    // INICIO - Control de intentos de inicio de sesión
+    @Column(name = "intentos_fallidos")
+    private Integer intentosFallidos = 0;
+
+    @Column(name = "cuenta_bloqueada")
+    private Boolean cuentaBloqueada = false;
+
+    @Column(name = "fecha_fin_bloqueo")
+    private LocalDateTime fechaFinBloqueo;
+    // FIN - Control de intentos de inicio de sesión
+
     @ManyToOne
     @JoinColumn(name = "cargo_id")
     private Cargo cargo;
@@ -104,6 +115,32 @@ public class Usuario {
     public void setFechaRegistro(LocalDateTime fechaRegistro) {
         this.fechaRegistro = fechaRegistro;
     }
+
+    // INICIO - Control de intentos de inicio de sesión
+    public Integer getIntentosFallidos() {
+        return intentosFallidos;
+    }
+
+    public void setIntentosFallidos(Integer intentosFallidos) {
+        this.intentosFallidos = intentosFallidos;
+    }
+
+    public Boolean getCuentaBloqueada() {
+        return cuentaBloqueada;
+    }
+
+    public void setCuentaBloqueada(Boolean cuentaBloqueada) {
+        this.cuentaBloqueada = cuentaBloqueada;
+    }
+
+    public LocalDateTime getFechaFinBloqueo() {
+        return fechaFinBloqueo;
+    }
+
+    public void setFechaFinBloqueo(LocalDateTime fechaFinBloqueo) {
+        this.fechaFinBloqueo = fechaFinBloqueo;
+    }
+    // FIN - Control de intentos de inicio de sesión
 
     public Cargo getCargo() {
         return cargo;

@@ -6,6 +6,7 @@ import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
 import org.springframework.stereotype.Service;
 import uteq.edu.ec.sicrec.dto.ReporteHistorialDTO;
+import uteq.edu.ec.sicrec.dto.AuditoriaResponseDTO;
 
 import java.io.ByteArrayOutputStream;
 import java.time.LocalDateTime;
@@ -114,5 +115,67 @@ public class PdfService {
         return output.toByteArray();
 
     }
+
+    // INICIO - Endpoints de auditoría
+    public byte[] generarAuditoriaPDF(
+            List<AuditoriaResponseDTO> datos
+    ) throws Exception {
+
+        Document document = new Document(PageSize.A4.rotate());
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        PdfWriter.getInstance(document, output);
+        document.open();
+
+        Font titulo = new Font(Font.HELVETICA, 16, Font.BOLD);
+        Paragraph encabezado = new Paragraph(
+                "Auditoría general - SICREC",
+                titulo
+        );
+        encabezado.setAlignment(Element.ALIGN_CENTER);
+        document.add(encabezado);
+        document.add(new Paragraph(" "));
+
+        PdfPTable tabla = new PdfPTable(7);
+        tabla.setWidthPercentage(100);
+
+        String[] columnas = {
+                "Fecha",
+                "Usuario",
+                "Módulo",
+                "Acción",
+                "Descripción",
+                "IP",
+                "Resultado"
+        };
+
+        for (String columna : columnas) {
+            tabla.addCell(new PdfPCell(new Phrase(columna)));
+        }
+
+        for (AuditoriaResponseDTO dto : datos) {
+            tabla.addCell(
+                    dto.getFechaAccion() != null
+                            ? dto.getFechaAccion().toString()
+                            : ""
+            );
+            tabla.addCell(dto.getNombreUsuario());
+            tabla.addCell(valorSeguro(dto.getModulo()));
+            tabla.addCell(valorSeguro(dto.getAccion()));
+            tabla.addCell(valorSeguro(dto.getDescripcion()));
+            tabla.addCell(valorSeguro(dto.getIpOrigen()));
+            tabla.addCell(valorSeguro(dto.getResultado()));
+        }
+
+        document.add(tabla);
+        document.close();
+
+        return output.toByteArray();
+    }
+
+    private String valorSeguro(String valor) {
+        return valor != null ? valor : "";
+    }
+    // FIN - Endpoints de auditoría
 
 }

@@ -1,6 +1,8 @@
 package uteq.edu.ec.sicrec.controller;
 
 import org.springframework.web.bind.annotation.*;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import uteq.edu.ec.sicrec.dto.RevistaDTO;
 import uteq.edu.ec.sicrec.entity.Usuario;
 import uteq.edu.ec.sicrec.repository.UsuarioRepository;
@@ -37,12 +39,36 @@ public class RevistaController {
 
     ) {
 
-        List<RevistaDTO> resultado =
-                revistaService.buscarRevistas(termino, cantidad);
+        if (usuarioId == null || usuarioId <= 0) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "usuarioId debe ser un identificador válido."
+            );
+        }
 
         Usuario usuario = usuarioRepository
                 .findById(usuarioId)
-                .orElseThrow();
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "No existe el usuario indicado."
+                ));
+
+        // INICIO - Auditoría módulo Búsquedas
+        List<RevistaDTO> resultado;
+
+        try {
+            resultado = revistaService.buscarRevistas(
+                    termino,
+                    cantidad
+            );
+        } catch (RuntimeException e) {
+            historialBusquedaService.registrarBusquedaFallida(
+                    usuario,
+                    termino
+            );
+            throw e;
+        }
+        // FIN - Auditoría módulo Búsquedas
 
         historialBusquedaService.guardarBusqueda(
                 usuario,

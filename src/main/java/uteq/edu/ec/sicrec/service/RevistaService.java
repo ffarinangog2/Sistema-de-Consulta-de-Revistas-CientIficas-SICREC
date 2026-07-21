@@ -3,12 +3,15 @@ package uteq.edu.ec.sicrec.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.server.ResponseStatusException;
 import uteq.edu.ec.sicrec.dto.RevistaDTO;
 import uteq.edu.ec.sicrec.dto.ScimagoInfoDTO;
 import uteq.edu.ec.sicrec.dto.ScopusInfoDTO;
 import uteq.edu.ec.sicrec.dto.SerialTitleDTO;
+import uteq.edu.ec.sicrec.dto.SubjectAreaDTO;
 import uteq.edu.ec.sicrec.entity.Scimago;
 import uteq.edu.ec.sicrec.repository.ScimagoRepository;
 
@@ -45,17 +48,34 @@ public class RevistaService {
         List<RevistaDTO> revistas = new ArrayList<>();
 
         String terminoLimpio = termino == null ? "" : termino.trim();
+
+        if (terminoLimpio.isBlank()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "El término de búsqueda es obligatorio."
+            );
+        }
+
+        if (cantidad == null || cantidad < 1 || cantidad > 200) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "La cantidad debe estar entre 1 y 200."
+            );
+        }
+
         boolean esIssn = esFormatoIssn(terminoLimpio);
 
         try {
 
-            String parametroBusqueda = esIssn
-                    ? "issn=" + normalizarIssn(terminoLimpio)
-                    : "title=" + terminoLimpio;
-
             String respuestaScopus = restClient
                     .get()
-                    .uri(serialUrl + "?" + parametroBusqueda + "&count=" + cantidad + "&view=STANDARD")
+                    .uri(
+                            serialUrl
+                                    + "?count={cantidad}&view=STANDARD&"
+                                    + (esIssn ? "issn={termino}" : "title={termino}"),
+                            cantidad,
+                            esIssn ? normalizarIssn(terminoLimpio) : terminoLimpio
+                    )
                     .header("X-ELS-APIKey", apiKey)
                     .header("Accept", "application/json")
                     .retrieve()
@@ -86,9 +106,25 @@ public class RevistaService {
 
             }
 
+        } catch (ResponseStatusException e) {
+
+            throw e;
+
         } catch (Exception e) {
 
-            throw new RuntimeException(e);
+            if (esIssn) {
+                RevistaDTO soloScimago = construirSoloDesdeScimago(normalizarIssn(terminoLimpio));
+                if (soloScimago != null) {
+                    revistas.add(soloScimago);
+                    return revistas;
+                }
+            }
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "No fue posible consultar la API de Scopus.",
+                    e
+            );
 
         }
 
@@ -108,9 +144,29 @@ public class RevistaService {
         String sourceId = obtenerTexto(entry, "source-id");
         String fecha = obtenerTexto(entry, "prism:coverDate");
 
-        Boolean accesoAbierto = entry.path("openaccessFlag").asBoolean(false);
+        // INICIO - Corrección de mapeo Scopus
+        String publisher = obtenerTexto(entry, "dc:publisher");
+        // FIN - Corrección de mapeo Scopus
+
+        // INICIO - Open Access
+        Boolean accesoAbierto = obtenerOpenAccess(entry);
+        String tipoOpenAccess = obtenerTexto(entry, "openaccessType");
+        // FIN - Open Access
+
+        // INICIO - Tipo de fuente
+        String tipoFuente = obtenerTexto(entry, "prism:aggregationType");
+        // FIN - Tipo de fuente
+
+        // INICIO - Cobertura
+        String coverageStartYear = obtenerTexto(entry, "coverageStartYear");
+        String coverageEndYear = obtenerTexto(entry, "coverageEndYear");
+        // FIN - Cobertura
+
+        // INICIO - Subject Area
+        List<SubjectAreaDTO> subjectAreas = obtenerSubjectAreas(entry);
+        // FIN - Subject Area
+
         String enlaceScopus = obtenerEnlaceScopus(entry);
-        String pais = obtenerPais(entry);
 
         // Identificador para CONSULTAR MÉTRICAS únicamente (no para mostrar):
         // prioridad ISSN -> eISSN. Esto solo decide qué identificador se manda
@@ -127,15 +183,24 @@ public class RevistaService {
 
         ScopusInfoDTO scopusInfo = new ScopusInfoDTO();
         scopusInfo.setEncontrado(true);
-        scopusInfo.setPais(pais);
+        // El campo se conserva por compatibilidad, pero Scopus Serial Title no ofrece país oficial.
+        scopusInfo.setPais(null);
         scopusInfo.setAccesoAbierto(accesoAbierto);
         scopusInfo.setEnlaceScopus(enlaceScopus);
+        scopusInfo.setPublisher(publisher);
+        scopusInfo.setSubjectAreas(subjectAreas);
+        scopusInfo.setTipoFuente(tipoFuente);
+        scopusInfo.setTipoOpenAccess(tipoOpenAccess);
+        scopusInfo.setCoverageStartYear(coverageStartYear);
+        scopusInfo.setCoverageEndYear(coverageEndYear);
 
         String cuartilScopus = null;
 
         if (metricas != null) {
 
-            scopusInfo.setPublisher(metricas.getPublisher());
+            if (scopusInfo.getPublisher() == null) {
+                scopusInfo.setPublisher(metricas.getPublisher());
+            }
 
             scopusInfo.setSjr(metricas.getSjr());
             scopusInfo.setSjrYear(metricas.getSjrYear());
@@ -147,9 +212,11 @@ public class RevistaService {
             scopusInfo.setCiteScoreYear(metricas.getCiteScoreYear());
 
             scopusInfo.setPercentile(metricas.getPercentile());
+            scopusInfo.setBestPercentile(metricas.getBestPercentile());
 
             cuartilScopus = metricas.getQuartile();
             scopusInfo.setCuartil(cuartilScopus);
+            scopusInfo.setBestQuartile(metricas.getBestQuartile());
 
         }
 
@@ -302,24 +369,45 @@ public class RevistaService {
 
     }
 
-    private String obtenerPais(JsonNode entry) {
+    // INICIO - Subject Area
+    private List<SubjectAreaDTO> obtenerSubjectAreas(JsonNode entry) {
 
-        JsonNode affiliation = entry.path("affiliation");
+        List<SubjectAreaDTO> areas = new ArrayList<>();
+        JsonNode subjectAreas = entry.path("subject-area");
 
-        if (affiliation.isArray() && affiliation.size() > 0) {
-
-            JsonNode primera = affiliation.get(0);
-
-            return obtenerTexto(
-                    primera,
-                    "affiliation-country"
-            );
-
+        if (subjectAreas.isArray()) {
+            for (JsonNode area : subjectAreas) {
+                areas.add(new SubjectAreaDTO(
+                        obtenerTexto(area, "@code"),
+                        obtenerTexto(area, "@abbrev"),
+                        obtenerTexto(area, "$")
+                ));
+            }
         }
 
-        return null;
+        return areas;
 
     }
+    // FIN - Subject Area
+
+    // INICIO - Open Access
+    private Boolean obtenerOpenAccess(JsonNode entry) {
+
+        JsonNode openaccess = entry.get("openaccess");
+
+        if (openaccess == null || openaccess.isNull()) {
+            return false;
+        }
+
+        if (openaccess.isBoolean()) {
+            return openaccess.asBoolean();
+        }
+
+        String valor = openaccess.asText();
+        return "1".equals(valor) || "true".equalsIgnoreCase(valor);
+
+    }
+    // FIN - Open Access
 
     private String obtenerEnlaceScopus(JsonNode entry) {
 
@@ -334,7 +422,8 @@ public class RevistaService {
                         "@ref"
                 );
 
-                if ("scopus".equals(ref)) {
+                // INICIO - Corrección de mapeo Scopus
+                if ("scopus-source".equals(ref) || "scopus".equals(ref)) {
 
                     return obtenerTexto(
                             link,
@@ -342,6 +431,7 @@ public class RevistaService {
                     );
 
                 }
+                // FIN - Corrección de mapeo Scopus
 
             }
 

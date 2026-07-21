@@ -5,7 +5,15 @@ import jakarta.persistence.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "auditoria")
+@Table(
+        name = "auditoria",
+        indexes = {
+                @Index(name = "idx_auditoria_fecha", columnList = "fecha_accion"),
+                @Index(name = "idx_auditoria_usuario", columnList = "usuario_id"),
+                @Index(name = "idx_auditoria_modulo", columnList = "modulo"),
+                @Index(name = "idx_auditoria_accion", columnList = "accion")
+        }
+)
 public class Auditoria {
 
     @Id
@@ -14,10 +22,14 @@ public class Auditoria {
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name = "usuario_id", nullable = false)
+    @JoinColumn(name = "usuario_id")
     private Usuario usuario;
 
-    @Column(nullable = false)
+    // INICIO - Auditoría general
+    @Column(length = 50)
+    private String modulo;
+
+    @Column(length = 100)
     private String accion;
 
     @Column(columnDefinition = "TEXT")
@@ -26,8 +38,12 @@ public class Auditoria {
     @Column(name = "fecha_accion")
     private LocalDateTime fechaAccion;
 
-    @Column(name = "ip_origen")
+    @Column(name = "ip_origen", length = 45)
     private String ipOrigen;
+
+    @Column(length = 10)
+    private String resultado;
+    // FIN - Auditoría general
 
     public Auditoria() {
     }
@@ -42,6 +58,15 @@ public class Auditoria {
 
     public void setUsuario(Usuario usuario) {
         this.usuario = usuario;
+    }
+
+    // INICIO - Auditoría general
+    public String getModulo() {
+        return modulo;
+    }
+
+    public void setModulo(String modulo) {
+        this.modulo = modulo;
     }
 
     public String getAccion() {
@@ -75,4 +100,21 @@ public class Auditoria {
     public void setIpOrigen(String ipOrigen) {
         this.ipOrigen = ipOrigen;
     }
+
+    public String getResultado() {
+        return resultado;
+    }
+
+    public void setResultado(String resultado) {
+        this.resultado = resultado;
+    }
+
+    @PrePersist
+    public void prePersist() {
+
+        if (fechaAccion == null) {
+            fechaAccion = LocalDateTime.now();
+        }
+    }
+    // FIN - Auditoría general
 }

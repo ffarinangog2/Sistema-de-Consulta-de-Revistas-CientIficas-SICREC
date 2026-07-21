@@ -14,8 +14,10 @@ import uteq.edu.ec.sicrec.repository.UsuarioRepository;
 import uteq.edu.ec.sicrec.security.JwtService;
 
 import java.time.LocalDateTime;
+import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 import uteq.edu.ec.sicrec.repository.RolRepository;
 import uteq.edu.ec.sicrec.repository.CargoRepository;
@@ -34,6 +36,7 @@ public class UsuarioService {
     private final CargoRepository cargoRepository;
     private final EmailService emailService;
     private final TokenRecuperacionRepository tokenRecuperacionRepository;
+    private final AuditoriaService auditoriaService;
 
     public UsuarioService(
             UsuarioRepository usuarioRepository,
@@ -42,7 +45,8 @@ public class UsuarioService {
             RolRepository rolRepository,
             CargoRepository cargoRepository,
             EmailService emailService,
-            TokenRecuperacionRepository tokenRecuperacionRepository)
+            TokenRecuperacionRepository tokenRecuperacionRepository,
+            AuditoriaService auditoriaService)
     {
 
         this.usuarioRepository = usuarioRepository;
@@ -52,6 +56,7 @@ public class UsuarioService {
         this.cargoRepository = cargoRepository;
         this.emailService =emailService;
         this.tokenRecuperacionRepository = tokenRecuperacionRepository;
+        this.auditoriaService = auditoriaService;
     }
 
     public List<Usuario> listarUsuarios() {
@@ -105,28 +110,41 @@ public class UsuarioService {
 
         String[] partes = dto.getNombreCompleto().trim().split("\\s+");
 
+        // INICIO - Generación fortalecida de usuario
         String usuarioGenerado =
                 (partes[0].substring(0, 1) + partes[partes.length - 1])
                         .toLowerCase();
 
-        String usuarioFinal = usuarioGenerado;
+        String usuarioFinal;
 
-        int contador = 2;
+        do {
 
-        while (usuarioRepository.existsByUsuario(usuarioFinal)) {
+            int cantidadNumeros = ThreadLocalRandom.current()
+                    .nextInt(2, 4);
 
-            usuarioFinal = usuarioGenerado + contador;
-            contador++;
+            int limiteInferior = cantidadNumeros == 2 ? 10 : 100;
+            int limiteSuperior = cantidadNumeros == 2 ? 100 : 1000;
 
-        }
+            int numerosAleatorios = ThreadLocalRandom.current()
+                    .nextInt(limiteInferior, limiteSuperior);
+
+            usuarioFinal = usuarioGenerado + numerosAleatorios;
+
+        } while (usuarioRepository.existsByUsuario(usuarioFinal));
 
         usuario.setUsuario(usuarioFinal);
+        // FIN - Generación fortalecida de usuario
 
 
         String passwordTemporal =
-                UUID.randomUUID()
-                        .toString()
-                        .substring(0, 8);
+                "A"
+                        + UUID.randomUUID().toString().substring(0, 5)
+                        + ThreadLocalRandom.current().nextInt(0, 10)
+                        + "a";
+
+        // INICIO - Validación de contraseña
+        validarFortalezaPassword(passwordTemporal);
+        // FIN - Validación de contraseña
 
         usuario.setPassword(
                 passwordEncoder.encode(passwordTemporal)
@@ -169,6 +187,16 @@ public class UsuarioService {
 
         Usuario usuarioGuardado = usuarioRepository.save(usuario);
 
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                null,
+                "USUARIOS",
+                "USUARIO_CREADO",
+                "Usuario creado: " + usuarioGuardado.getUsuario(),
+                AuditoriaService.RESULTADO_EXITO
+        );
+        // FIN - Registro de eventos
+
         emailService.enviarPasswordTemporal(
                 usuarioGuardado.getCorreoInstitucional(),
                 usuarioGuardado.getNombreCompleto(),
@@ -192,6 +220,17 @@ public class UsuarioService {
                 .findByCorreoInstitucional(correo);
 
         if (usuarioOptional.isEmpty()) {
+
+            // INICIO - Registro de eventos
+            auditoriaService.registrarEvento(
+                    null,
+                    "AUTENTICACIÓN",
+                    "RECUPERACIÓN_SOLICITADA",
+                    "Solicitud de recuperación recibida",
+                    AuditoriaService.RESULTADO_EXITO
+            );
+            // FIN - Registro de eventos
+
             return;
         }
 
@@ -214,7 +253,7 @@ public class UsuarioService {
         tokenRecuperacionRepository.save(tokenRecuperacion);
 
         String enlace =
-                "http://localhost:5173/restablecer-password?token="
+                "/restablecer-password?token="
                         + token;
 
         emailService.enviarRecuperacionPassword(
@@ -222,6 +261,16 @@ public class UsuarioService {
                 usuario.getNombreCompleto(),
                 enlace
         );
+
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                usuario,
+                "AUTENTICACIÓN",
+                "RECUPERACIÓN_SOLICITADA",
+                "Solicitud de recuperación recibida",
+                AuditoriaService.RESULTADO_EXITO
+        );
+        // FIN - Registro de eventos
     }
 
     public TokenRecuperacion validarTokenRecuperacion(String token) {
@@ -267,6 +316,10 @@ public class UsuarioService {
             );
         }
 
+        // INICIO - Validación de contraseña
+        validarFortalezaPassword(nuevaPassword);
+        // FIN - Validación de contraseña
+
         Usuario usuario = tokenRecuperacion.getUsuario();
 
         usuario.setPassword(
@@ -277,10 +330,39 @@ public class UsuarioService {
         usuarioRepository.save(usuario);
 
         tokenRecuperacionRepository.deleteByToken(token);
+
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                usuario,
+                "AUTENTICACIÓN",
+                "CONTRASEÑA_RESTABLECIDA",
+                "Contraseña restablecida mediante token",
+                AuditoriaService.RESULTADO_EXITO
+        );
+        // FIN - Registro de eventos
     }
 
     public void eliminarUsuario(Long id) {
-        usuarioRepository.deleteById(id);
+
+        // INICIO - Desactivación lógica de usuarios
+        Usuario usuario = usuarioRepository.findById(id)
+                .orElseThrow(() ->
+                        new RuntimeException("Usuario no encontrado"));
+
+        usuario.setEstado(false);
+
+        usuarioRepository.save(usuario);
+
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                null,
+                "USUARIOS",
+                "USUARIO_DESACTIVADO",
+                "Usuario desactivado: " + usuario.getUsuario(),
+                AuditoriaService.RESULTADO_EXITO
+        );
+        // FIN - Registro de eventos
+        // FIN - Desactivación lógica de usuarios
     }
 
     public Usuario actualizarUsuario(Long id, Usuario usuarioActualizado) {
@@ -288,13 +370,55 @@ public class UsuarioService {
         Usuario usuario = usuarioRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
 
+        boolean estabaActivo = Boolean.TRUE.equals(usuario.getEstado());
+
+        // INICIO - Validación de correo institucional
+        if (usuarioActualizado.getCorreoInstitucional() == null
+                || !usuarioActualizado.getCorreoInstitucional()
+                .endsWith("@uteq.edu.ec")) {
+
+            throw new RuntimeException(
+                    "Debe utilizar el correo institucional de la UTEQ."
+            );
+        }
+        // FIN - Validación de correo institucional
+
         usuario.setNombreCompleto(usuarioActualizado.getNombreCompleto());
         usuario.setCorreoInstitucional(usuarioActualizado.getCorreoInstitucional());
         usuario.setEstado(usuarioActualizado.getEstado());
         usuario.setRol(usuarioActualizado.getRol());
         usuario.setCargo(usuarioActualizado.getCargo());
 
-        return usuarioRepository.save(usuario);
+        Usuario usuarioGuardado = usuarioRepository.save(usuario);
+
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                null,
+                "USUARIOS",
+                "USUARIO_ACTUALIZADO",
+                "Usuario actualizado: " + usuarioGuardado.getUsuario(),
+                AuditoriaService.RESULTADO_EXITO
+        );
+
+        boolean estaActivo = Boolean.TRUE.equals(usuarioGuardado.getEstado());
+
+        if (estabaActivo != estaActivo) {
+
+            auditoriaService.registrarEvento(
+                    null,
+                    "USUARIOS",
+                    estaActivo
+                            ? "USUARIO_ACTIVADO"
+                            : "USUARIO_DESACTIVADO",
+                    "Usuario "
+                            + (estaActivo ? "activado: " : "desactivado: ")
+                            + usuarioGuardado.getUsuario(),
+                    AuditoriaService.RESULTADO_EXITO
+            );
+        }
+        // FIN - Registro de eventos
+
+        return usuarioGuardado;
     }
 
     private UsuarioResponseDTO convertirDTO(Usuario usuario) {
@@ -321,21 +445,183 @@ public class UsuarioService {
 
     public LoginResponseDTO login(LoginRequestDTO request) {
 
-        Usuario usuario = usuarioRepository
-                .findByUsuario(request.getUsuario())
-                .orElseThrow(() ->
-                        new RuntimeException("Usuario o contraseña incorrectos"));
+        Optional<Usuario> usuarioOptional = usuarioRepository
+                .findByUsuario(request.getUsuario());
+
+        if (usuarioOptional.isEmpty()) {
+
+            // INICIO - Registro de eventos
+            auditoriaService.registrarEvento(
+                    null,
+                    "AUTENTICACIÓN",
+                    "LOGIN_FALLIDO",
+                    "Intento de inicio de sesión con usuario no registrado",
+                    AuditoriaService.RESULTADO_ERROR
+            );
+            // FIN - Registro de eventos
+
+            throw new RuntimeException(
+                    "Usuario o contraseña incorrectos"
+            );
+        }
+
+        Usuario usuario = usuarioOptional.get();
+
+        // INICIO - Desactivación lógica de usuarios
+        if (!Boolean.TRUE.equals(usuario.getEstado())) {
+
+            // INICIO - Registro de eventos
+            auditoriaService.registrarEvento(
+                    usuario,
+                    "AUTENTICACIÓN",
+                    "LOGIN_FALLIDO",
+                    "Inicio de sesión rechazado por cuenta desactivada",
+                    AuditoriaService.RESULTADO_ERROR
+            );
+            // FIN - Registro de eventos
+
+            throw new RuntimeException(
+                    "La cuenta se encuentra desactivada"
+            );
+        }
+        // FIN - Desactivación lógica de usuarios
+
+        // INICIO - Bloqueo temporal de cuenta
+        LocalDateTime fechaActual = LocalDateTime.now();
+
+        if (Boolean.TRUE.equals(usuario.getCuentaBloqueada())) {
+
+            LocalDateTime fechaFinBloqueo = usuario.getFechaFinBloqueo();
+
+            if (fechaFinBloqueo != null
+                    && fechaFinBloqueo.isAfter(fechaActual)) {
+
+                // INICIO - Registro de eventos
+                auditoriaService.registrarEvento(
+                        usuario,
+                        "AUTENTICACIÓN",
+                        "LOGIN_FALLIDO",
+                        "Inicio de sesión rechazado por bloqueo temporal",
+                        AuditoriaService.RESULTADO_ERROR
+                );
+                // FIN - Registro de eventos
+
+                long segundosRestantes = Duration.between(
+                        fechaActual,
+                        fechaFinBloqueo
+                ).getSeconds();
+
+                long minutosRestantes = Math.max(
+                        1,
+                        (segundosRestantes + 59) / 60
+                );
+
+                throw new RuntimeException(
+                        "La cuenta está bloqueada temporalmente. Intente nuevamente en aproximadamente "
+                                + minutosRestantes
+                                + " minutos"
+                );
+            }
+
+            usuario.setCuentaBloqueada(false);
+            usuario.setFechaFinBloqueo(null);
+            usuario.setIntentosFallidos(0);
+
+            // INICIO - Registro de eventos
+            auditoriaService.registrarEvento(
+                    usuario,
+                    "AUTENTICACIÓN",
+                    "CUENTA_DESBLOQUEADA",
+                    "Cuenta desbloqueada automáticamente",
+                    AuditoriaService.RESULTADO_EXITO
+            );
+            // FIN - Registro de eventos
+        }
+        // FIN - Bloqueo temporal de cuenta
 
         if (!passwordEncoder.matches(
                 request.getPassword(),
                 usuario.getPassword())) {
 
+            // INICIO - Control de intentos de inicio de sesión
+            int intentosFallidos = usuario.getIntentosFallidos() == null
+                    ? 0
+                    : usuario.getIntentosFallidos();
+
+            intentosFallidos++;
+
+            if (intentosFallidos >= 5) {
+
+                // INICIO - Bloqueo temporal de cuenta
+                usuario.setIntentosFallidos(0);
+                usuario.setCuentaBloqueada(true);
+                usuario.setFechaFinBloqueo(
+                        LocalDateTime.now().plusMinutes(15)
+                );
+
+                usuarioRepository.save(usuario);
+
+                // INICIO - Registro de eventos
+                auditoriaService.registrarEvento(
+                        usuario,
+                        "AUTENTICACIÓN",
+                        "LOGIN_FALLIDO",
+                        "Quinto intento consecutivo de inicio de sesión fallido",
+                        AuditoriaService.RESULTADO_ERROR
+                );
+
+                auditoriaService.registrarEvento(
+                        usuario,
+                        "AUTENTICACIÓN",
+                        "CUENTA_BLOQUEADA",
+                        "Cuenta bloqueada temporalmente durante 15 minutos",
+                        AuditoriaService.RESULTADO_ERROR
+                );
+                // FIN - Registro de eventos
+
+                throw new RuntimeException(
+                        "La cuenta ha sido bloqueada durante 15 minutos por varios intentos fallidos"
+                );
+                // FIN - Bloqueo temporal de cuenta
+            }
+
+            usuario.setIntentosFallidos(intentosFallidos);
+            usuarioRepository.save(usuario);
+
+            // INICIO - Registro de eventos
+            auditoriaService.registrarEvento(
+                    usuario,
+                    "AUTENTICACIÓN",
+                    "LOGIN_FALLIDO",
+                    "Intento de inicio de sesión fallido",
+                    AuditoriaService.RESULTADO_ERROR
+            );
+            // FIN - Registro de eventos
+            // FIN - Control de intentos de inicio de sesión
+
             throw new RuntimeException("Usuario o contraseña incorrectos");
         }
+
+        // INICIO - Control de intentos de inicio de sesión
+        usuario.setIntentosFallidos(0);
+        usuario.setCuentaBloqueada(false);
+        usuario.setFechaFinBloqueo(null);
+        usuarioRepository.save(usuario);
+        // FIN - Control de intentos de inicio de sesión
 
         String token = jwtService.generarToken(
                 request.getUsuario()
         );
+
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                usuario,
+                "AUTENTICACIÓN",
+                "LOGIN_EXITOSO",
+                "Inicio de sesión exitoso",
+                AuditoriaService.RESULTADO_EXITO
+        );
+        // FIN - Registro de eventos
 
         return new LoginResponseDTO(
                 usuario.getId(),
@@ -370,13 +656,53 @@ public class UsuarioService {
 
         }
 
+        // INICIO - Validación de contraseña
+        validarFortalezaPassword(dto.getNuevaPassword());
+        // FIN - Validación de contraseña
+
         usuario.setPassword(
                 passwordEncoder.encode(dto.getNuevaPassword())
         );
 usuario.setDebeCambiarPassword(false);
         usuarioRepository.save(usuario);
 
+        // INICIO - Registro de eventos
+        auditoriaService.registrarEvento(
+                usuario,
+                "AUTENTICACIÓN",
+                "CAMBIO_CONTRASEÑA",
+                "Contraseña actualizada",
+                AuditoriaService.RESULTADO_EXITO
+        );
+        // FIN - Registro de eventos
+
     }
+
+    // INICIO - Validación de contraseña
+    private void validarFortalezaPassword(String password) {
+
+        boolean tieneMayuscula = password != null
+                && password.chars().anyMatch(Character::isUpperCase);
+
+        boolean tieneMinuscula = password != null
+                && password.chars().anyMatch(Character::isLowerCase);
+
+        boolean tieneNumero = password != null
+                && password.chars().anyMatch(Character::isDigit);
+
+        if (password == null
+                || password.length() < 8
+                || !tieneMayuscula
+                || !tieneMinuscula
+                || !tieneNumero) {
+
+            throw new RuntimeException(
+                    "La contraseña debe tener al menos 8 caracteres, "
+                            + "una letra mayúscula, una letra minúscula y un número"
+            );
+        }
+    }
+    // FIN - Validación de contraseña
 
 
 }
