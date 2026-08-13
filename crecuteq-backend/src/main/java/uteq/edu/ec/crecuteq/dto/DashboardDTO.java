@@ -16,7 +16,7 @@ public class DashboardDTO {
 
     private Long totalBusquedas;
 
-    private Long totalRevistas;
+    private Long totalBusquedasExitosas;
 
     // Top 10 términos más buscados
     private List<TopBusquedaDTO> topBusquedas;

@@ -12,7 +12,7 @@ function DashboardAdmin() {
         totalUsuarios: 0,
         totalFavoritos: 0,
         totalBusquedas: 0,
-        totalRevistas: 0,
+        totalBusquedasExitosas: 0,
         topBusquedas: [],
         ultimasBusquedas: []
 
@@ -48,7 +48,7 @@ function DashboardAdmin() {
             <div className="mb-4">
                 <h2 className="mb-1">Panel de Administración</h2>
                 <p className="text-muted">
-                    Resumen general de la actividad y los recursos registrados en CRECUTEQ.
+                    Resumen general de la actividad registrada en CRECUTEQ.
                 </p>
             </div>
 
@@ -114,10 +114,10 @@ function DashboardAdmin() {
 
                         <div className="card-body d-flex align-items-center gap-3">
 
-                            <span className="fs-3" aria-hidden="true">📚</span>
+                            <span className="fs-3" aria-hidden="true">✓</span>
                             <div>
-                                <div className="text-muted small">Revistas</div>
-                                <h3 className="mb-0">{dashboard.totalRevistas}</h3>
+                                <div className="text-muted small">Búsquedas exitosas</div>
+                                <h3 className="mb-0">{dashboard.totalBusquedasExitosas}</h3>
                             </div>
 
                         </div>

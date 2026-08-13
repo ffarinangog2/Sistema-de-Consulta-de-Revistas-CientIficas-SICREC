@@ -7,7 +7,6 @@ import uteq.edu.ec.crecuteq.dto.UltimaBusquedaDTO;
 import uteq.edu.ec.crecuteq.projection.TopBusquedaProjection;
 import uteq.edu.ec.crecuteq.repository.FavoritoRepository;
 import uteq.edu.ec.crecuteq.repository.HistorialBusquedaRepository;
-import uteq.edu.ec.crecuteq.repository.ScimagoRepository;
 import uteq.edu.ec.crecuteq.repository.UsuarioRepository;
 import uteq.edu.ec.crecuteq.projection.UltimaBusquedaProjection;
 import java.util.List;
@@ -19,18 +18,15 @@ public class DashboardService {
     private final UsuarioRepository usuarioRepository;
     private final FavoritoRepository favoritoRepository;
     private final HistorialBusquedaRepository historialRepository;
-    private final ScimagoRepository scimagoRepository;
 
     public DashboardService(
             UsuarioRepository usuarioRepository,
             FavoritoRepository favoritoRepository,
-            HistorialBusquedaRepository historialRepository,
-            ScimagoRepository scimagoRepository
+            HistorialBusquedaRepository historialRepository
     ) {
         this.usuarioRepository = usuarioRepository;
         this.favoritoRepository = favoritoRepository;
         this.historialRepository = historialRepository;
-        this.scimagoRepository = scimagoRepository;
     }
 
     public DashboardDTO obtenerResumen() {
@@ -49,8 +45,8 @@ public class DashboardService {
                 historialRepository.count()
         );
 
-        dto.setTotalRevistas(
-                scimagoRepository.count()
+        dto.setTotalBusquedasExitosas(
+                historialRepository.countByCantidadResultadosGreaterThan(0)
         );
 
         // ===============================

@@ -16,6 +16,8 @@ import java.util.List;
 
 @Repository
 public interface HistorialBusquedaRepository extends JpaRepository<HistorialBusqueda, Long> {
+    long countByCantidadResultadosGreaterThan(Integer cantidadResultados);
+
   long countByUsuarioId(Long usuarioId);
     List<HistorialBusqueda> findByUsuarioOrderByFechaBusquedaDesc(Usuario usuario);
 
