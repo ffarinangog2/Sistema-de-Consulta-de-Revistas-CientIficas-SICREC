@@ -1,0 +1,12 @@
+.git
+.idea
+.env
+backups
+data
+documents
+target
+crecuteq-frontend
+*.xlsx
+*.dump
+**/node_modules
+**/dist

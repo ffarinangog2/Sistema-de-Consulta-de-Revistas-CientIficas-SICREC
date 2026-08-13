@@ -31,3 +31,10 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Secretos locales de Docker Compose
+.env
+
+# Artefactos generados por contenedores
+crecuteq-backend/documents/*
+!crecuteq-backend/documents/.gitkeep
